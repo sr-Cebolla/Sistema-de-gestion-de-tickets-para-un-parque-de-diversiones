@@ -561,7 +561,7 @@
                         });
                     });
             }
-            
+            //
             // Cargar gráfico inicial
             actualizarGrafico($('#daterange').data('daterangepicker').startDate, 
                             $('#daterange').data('daterangepicker').endDate);
