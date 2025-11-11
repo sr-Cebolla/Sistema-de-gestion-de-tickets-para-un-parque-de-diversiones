@@ -85,6 +85,12 @@ require_once "dependencias.php";
             <?php endif; ?>
 
             <?php if(isset($_SESSION['rol']) && $_SESSION['rol'] == "administrador"): ?>
+            <li class="nav-item <?php echo ($currentPage == 'reportes_avanzados.php') ? 'active' : ''; ?>">
+              <a href="reportes_avanzados.php"><span class="glyphicon glyphicon-stats"></span> Reportes Avanzados</a>
+            </li>
+            <?php endif; ?>
+
+            <?php if(isset($_SESSION['rol']) && $_SESSION['rol'] == "administrador"): ?>
               <li class="nav-item">
                 <a href="usuarios.php"><span class="glyphicon glyphicon-user"></span> Administrar usuarios</a>
               </li>

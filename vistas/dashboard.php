@@ -71,6 +71,39 @@
             $ticket_names[] = $row['nombre'];
             $ticket_counts[] = $row['total_vendidos'];
         }
+
+        // Query para obtener ventas por hora del día (PDD-54)
+        $sql_por_hora = "SELECT 
+                            HOUR(horaCompra) as hora,
+                            COUNT(*) as total_ventas,
+                            SUM(CASE WHEN id_edad = 1 THEN 1 ELSE 0 END) as ninos,
+                            SUM(CASE WHEN id_edad = 2 THEN 1 ELSE 0 END) as adultos,
+                            SUM(CASE WHEN id_edad = 3 THEN 1 ELSE 0 END) as adultos_mayores
+                         FROM ventas 
+                         WHERE fechaCompra = '$fecha_actual' AND horaCompra IS NOT NULL
+                         GROUP BY HOUR(horaCompra)
+                         ORDER BY hora";
+        $result_por_hora = mysqli_query($conexion, $sql_por_hora);
+        $ventas_por_hora = array();
+        while($row = mysqli_fetch_assoc($result_por_hora)) {
+            $ventas_por_hora[] = $row;
+        }
+
+        // Query para obtener fechas con mayor volumen de ventas (PDD-36, PDD-55)
+        $sql_fechas_pico = "SELECT 
+                                fechaCompra,
+                                COUNT(*) as total_ventas,
+                                SUM(precio) as total_ingresos
+                            FROM ventas
+                            WHERE fechaCompra >= DATE_SUB('$fecha_actual', INTERVAL 30 DAY)
+                            GROUP BY fechaCompra
+                            ORDER BY total_ventas DESC
+                            LIMIT 10";
+        $result_fechas_pico = mysqli_query($conexion, $sql_fechas_pico);
+        $fechas_pico = array();
+        while($row = mysqli_fetch_assoc($result_fechas_pico)) {
+            $fechas_pico[] = $row;
+        }
 ?>
 
 <!DOCTYPE html>
@@ -393,6 +426,85 @@
                 </div>
             </div>
         </div>
+
+        <!-- Nueva sección: Ventas por hora y grupo de edad (PDD-54) -->
+        <div class="tables-grid">
+            <div class="table-section">
+                <h2 class="section-title">📊 Análisis de Ventas por Hora y Grupo de Edad</h2>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Hora</th>
+                                <th>Total</th>
+                                <th>Niños</th>
+                                <th>Adultos</th>
+                                <th>Adultos Mayores</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php
+                            if(count($ventas_por_hora) > 0) {
+                                foreach($ventas_por_hora as $vh) {
+                                    $hora_formato = str_pad($vh['hora'], 2, '0', STR_PAD_LEFT) . ':00';
+                                    echo "<tr>";
+                                    echo "<td><strong>{$hora_formato}</strong></td>";
+                                    echo "<td class='quantity'>{$vh['total_ventas']}</td>";
+                                    echo "<td class='quantity'>{$vh['ninos']}</td>";
+                                    echo "<td class='quantity'>{$vh['adultos']}</td>";
+                                    echo "<td class='quantity'>{$vh['adultos_mayores']}</td>";
+                                    echo "</tr>";
+                                }
+                            } else {
+                                echo "<tr><td colspan='5' style='text-align:center;'>No hay datos disponibles para hoy</td></tr>";
+                            }
+                            ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Nueva sección: Fechas Pico (PDD-36, PDD-55) -->
+            <div class="table-section">
+                <h2 class="section-title">🔥 Fechas con Mayor Volumen de Ventas (Últimos 30 días)</h2>
+                <div class="table-container">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Total Ventas</th>
+                                <th>Total Ingresos</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php
+                            if(count($fechas_pico) > 0) {
+                                foreach($fechas_pico as $fp) {
+                                    $fecha_formato = date('d/m/Y', strtotime($fp['fechaCompra']));
+                                    echo "<tr>";
+                                    echo "<td><strong>{$fecha_formato}</strong></td>";
+                                    echo "<td class='quantity'>{$fp['total_ventas']}</td>";
+                                    echo "<td class='quantity'>$" . number_format($fp['total_ingresos'], 2) . "</td>";
+                                    echo "</tr>";
+                                }
+                            } else {
+                                echo "<tr><td colspan='3' style='text-align:center;'>No hay datos disponibles</td></tr>";
+                            }
+                            ?>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Nueva sección: Gráfico de ventas por hora (PDD-54) -->
+        <div class="chart-grid">
+            <div class="chart-section">
+                <div class="chart-container">
+                    <canvas id="ventasPorHoraChart"></canvas>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -545,6 +657,87 @@
                         text: 'Top 5 Tickets Más Vendidos',
                         font: {
                             size: 14
+                        }
+                    }
+                }
+            }
+        });
+
+        // Gráfico de ventas por hora y grupo de edad (PDD-54)
+        const ventasPorHoraCtx = document.getElementById('ventasPorHoraChart').getContext('2d');
+        
+        <?php
+        // Preparar datos para el gráfico
+        $horas_labels = array();
+        $datos_ninos = array();
+        $datos_adultos = array();
+        $datos_adultos_mayores = array();
+        
+        foreach($ventas_por_hora as $vh) {
+            $horas_labels[] = str_pad($vh['hora'], 2, '0', STR_PAD_LEFT) . ':00';
+            $datos_ninos[] = $vh['ninos'];
+            $datos_adultos[] = $vh['adultos'];
+            $datos_adultos_mayores[] = $vh['adultos_mayores'];
+        }
+        ?>
+        
+        new Chart(ventasPorHoraCtx, {
+            type: 'bar',
+            data: {
+                labels: <?php echo json_encode($horas_labels); ?>,
+                datasets: [
+                    {
+                        label: 'Niños',
+                        data: <?php echo json_encode($datos_ninos); ?>,
+                        backgroundColor: 'rgba(66, 153, 225, 0.7)',
+                        borderColor: 'rgba(66, 153, 225, 1)',
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Adultos',
+                        data: <?php echo json_encode($datos_adultos); ?>,
+                        backgroundColor: 'rgba(72, 187, 120, 0.7)',
+                        borderColor: 'rgba(72, 187, 120, 1)',
+                        borderWidth: 1
+                    },
+                    {
+                        label: 'Adultos Mayores',
+                        data: <?php echo json_encode($datos_adultos_mayores); ?>,
+                        backgroundColor: 'rgba(237, 137, 54, 0.7)',
+                        borderColor: 'rgba(237, 137, 54, 1)',
+                        borderWidth: 1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                scales: {
+                    x: {
+                        stacked: false,
+                        title: {
+                            display: true,
+                            text: 'Hora del Día'
+                        }
+                    },
+                    y: {
+                        stacked: false,
+                        beginAtZero: true,
+                        title: {
+                            display: true,
+                            text: 'Cantidad de Tickets'
+                        }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        position: 'top',
+                    },
+                    title: {
+                        display: true,
+                        text: 'Ventas por Hora y Grupo de Edad (Hoy)',
+                        font: {
+                            size: 16
                         }
                     }
                 }
